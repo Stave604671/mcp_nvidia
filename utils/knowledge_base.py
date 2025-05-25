@@ -3,9 +3,17 @@ import os
 import faiss
 import numpy as np
 import asyncio
+from sentence_transformers import SentenceTransformer  # <--- 新增导入
 
 from config import DATA_DIR, QA_CACHE_FILE, FAISS_INDEX_FILE
-from utils.gemini_utils import get_embedding
+
+# from utils.gemini_utils import get_embedding # <--- 移除此行，因为不再从这里获取嵌入
+
+# 初始化 SentenceTransformer 模型
+# 这个模型会在第一次使用时自动下载，如果本地没有
+print("正在加载 SentenceTransformer 模型 'sentence-transformers/all-MiniLM-L6-v2'...")
+embed_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+print("SentenceTransformer 模型加载完成。")
 
 
 def ensure_data_dir():
@@ -46,7 +54,7 @@ def save_faiss_index(index):
 async def build_and_save_faiss_index(qa_pairs: list):
     """
     从问答对构建 FAISS 索引并保存。
-    使用异步并行处理嵌入向量。
+    使用 SentenceTransformer 模型生成嵌入向量。
     """
     if not qa_pairs:
         print("没有问答对可用于构建索引。")
@@ -56,19 +64,19 @@ async def build_and_save_faiss_index(qa_pairs: list):
     # 提取所有问题用于嵌入
     questions = [item['question'] for item in qa_pairs]
 
-    # 异步并行获取所有问题的嵌入向量
-    embeddings_tasks = [get_embedding(q) for q in questions]
-    embeddings_list = await asyncio.gather(*embeddings_tasks)
+    # 使用 SentenceTransformer 批量生成嵌入向量
+    # SentenceTransformer.encode 默认是同步的，但对于批量处理非常高效
+    embeddings_np = embed_model.encode(questions)
 
-    # 过滤掉空的或失败的嵌入，并转换为 NumPy 数组
-    valid_embeddings = [emb for emb in embeddings_list if emb is not None and len(emb) > 0]
+    # 确保向量是 float32 类型，FAISS 需要这个类型
+    embeddings_np = embeddings_np.astype('float32')
 
-    if not valid_embeddings:
+    if embeddings_np.size == 0:
         print("没有有效的嵌入向量生成，无法构建 FAISS 索引。")
         return
 
-    embedding_dimension = len(valid_embeddings[0])
-    embeddings_np = np.array(valid_embeddings).astype('float32')
+    embedding_dimension = embeddings_np.shape[1]  # 获取嵌入向量的维度
+    # 也可以用 embed_model.get_sentence_embedding_dimension() 来获取维度
 
     # 创建 FAISS 索引
     index = faiss.IndexFlatL2(embedding_dimension)  # L2 距离，简单欧氏距离
@@ -95,8 +103,9 @@ async def search_faiss_index(query_text: str, k: int = 5) -> list:
         return []
 
     try:
-        query_embedding = await get_embedding(query_text)
-        query_embedding_np = np.array([query_embedding]).astype('float32')
+        # 使用 SentenceTransformer 生成查询文本的嵌入向量
+        query_embedding = embed_model.encode([query_text])
+        query_embedding_np = query_embedding.astype('float32')
 
         # 执行搜索
         distances, indices = faiss_index.search(query_embedding_np, k)
