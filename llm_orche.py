@@ -91,8 +91,8 @@ async def main_test():
     print(f"--- 启动 LLM 编排器测试 ---")
     print(f"请确保您的 FastAPI 后端已运行在 {FASTAPI_MCP_URL}!")
     print("----------------------------")
-    return await query_message("帮我查找有关刑法案例分析的题目，然后开始考察我的掌握程度。")
-
+    res = await query_message("帮我查找有关刑法案例分析的题目，然后开始考察我的掌握程度。")
+    print(res)
 
 if __name__ == "__main__":
     res = asyncio.run(main_test())
