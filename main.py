@@ -20,7 +20,7 @@ ensure_data_dir()
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="知识库问答与考核API",
+    title="KnowLedge API",
     description="使用FastAPI和FastMCP构建的基于PDF的知识库系统",
     version="1.0.0"
 )
