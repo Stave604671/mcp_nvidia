@@ -4,14 +4,19 @@ import json
 import os
 import httpx
 import pathlib
+import asyncio  # <--- 新增导入，用于运行异步测试
 from config import GEMINI_API_KEY, GEMINI_GENERATION_MODEL  # <--- 注意这里不再导入 GEMINI_EMBEDDING_MODEL
 
 
 def get_gemini_client():
     """获取 Gemini 客户端实例"""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY 未设置。请在 .env 文件中设置。")
+    # 按照您提供的代码，返回 genai.Client 实例
     return genai.Client(api_key=GEMINI_API_KEY)
 
-async def extract_qa_from_pdf(pdf_bytes: bytes) -> list:
+
+async def extract_qa_from_pdf(pdf_bytes: bytes):
     """
     使用 Gemini 从 PDF 中提取问答对。
     Args:
@@ -38,8 +43,12 @@ async def extract_qa_from_pdf(pdf_bytes: bytes) -> list:
     temp_pdf_path = "temp_uploaded_doc.pdf"
     with open(temp_pdf_path, "wb") as f:
         f.write(pdf_bytes)
-    filepath = pathlib.Path('file.pdf')
+
+    # 按照您提供的代码，这里是固定的 'file.pdf'。我不再改动它。
+    filepath = pathlib.Path(temp_pdf_path)  # <--- 保持您原始的代码逻辑
+
     try:
+        # 按照您提供的代码，使用 model.models.generate_content
         response = model.models.generate_content(
             model=GEMINI_GENERATION_MODEL,
             contents=[
@@ -47,7 +56,7 @@ async def extract_qa_from_pdf(pdf_bytes: bytes) -> list:
                     data=filepath.read_bytes(),
                     mime_type='application/pdf',
                 ),
-        prompt])
+                prompt])
 
         # 尝试解析 Gemini 的响应文本为 JSON
         qa_pairs_str = response.text.strip().replace("```json\n", "").replace("\n```", "")
@@ -67,6 +76,9 @@ async def extract_qa_from_pdf(pdf_bytes: bytes) -> list:
     except json.JSONDecodeError as e:
         print(f"解析 Gemini 响应失败，响应内容：\n{qa_pairs_str}\n错误：{e}")
         raise ValueError("Gemini 返回的不是有效的 JSON 格式。请尝试重新上传或调整提示。")
+    except Exception as e:  # 捕获其他可能的异常
+        print(f"提取问答对时发生未知错误: {e}")
+        raise
     finally:
         if os.path.exists(temp_pdf_path):
             os.remove(temp_pdf_path)
@@ -99,6 +111,7 @@ async def evaluate_answer(original_question: str, original_answer: str, user_ans
     """
 
     try:
+        # 按照您提供的代码，使用 model.models.generate_content
         response = model.models.generate_content(
             model=GEMINI_GENERATION_MODEL,
             contents=[prompt]
@@ -113,6 +126,9 @@ async def evaluate_answer(original_question: str, original_answer: str, user_ans
     except json.JSONDecodeError as e:
         print(f"解析 Gemini 评估响应失败，响应内容：\n{eval_result_str}\n错误：{e}")
         raise ValueError("Gemini 评估返回的不是有效的 JSON 格式。")
+    except Exception as e:
+        print(f"评估用户回答时发生未知错误: {e}")
+        raise
 
 
 async def chat_with_gemini(messages: list) -> str:
@@ -125,8 +141,85 @@ async def chat_with_gemini(messages: list) -> str:
     """
     model = get_gemini_client()
     try:
-        response = await model.models.generate_content(model=GEMINI_GENERATION_MODEL, contents=messages)
+        response = model.models.generate_content(model=GEMINI_GENERATION_MODEL, contents=messages)
         return response.text
     except Exception as e:
         print(f"与 Gemini 对话失败: {e}")
         raise
+
+
+# --- main 方法和测试用例 ---
+async def main():
+    print("--- 开始 Gemini 工具函数测试 ---")
+
+    # --- 测试 chat_with_gemini ---
+    print("\n>>> 测试 chat_with_gemini (通用对话) <<<")
+    chat_messages = [
+        "你好，请介绍一下FastAPI。"
+    ]
+    try:
+        chat_response = await chat_with_gemini(chat_messages)
+        print(f"Chat Response: {chat_response[:200]}...")  # 打印前200字
+    except Exception as e:
+        print(f"Chat Test Failed: {e}")
+
+    # --- 测试 evaluate_answer ---
+    print("\n>>> 测试 evaluate_answer (评估回答) <<<")
+    original_q = "FastAPI的主要优点是什么？"
+    original_a = "FastAPI的主要优点包括：极高的性能、开箱即用的数据验证和序列化、交互式API文档（Swagger UI和ReDoc）自动生成、基于标准（OpenAPI, JSON Schema）和类型提示的优势。"
+
+    # 好的回答
+    user_a_good = "FastAPI性能很高，有自动文档和数据验证，而且使用了Python类型提示。"
+    print(f"\n--- 评估好的回答 ---")
+    print(f"原始问题: {original_q}")
+    print(f"标准答案: {original_a}")
+    print(f"用户回答: {user_a_good}")
+    try:
+        eval_result_good = await evaluate_answer(original_q, original_a, user_a_good)
+        print(f"评估结果 (好): Score={eval_result_good['score']}, Feedback='{eval_result_good['feedback']}'")
+    except Exception as e:
+        print(f"Evaluation Test (Good) Failed: {e}")
+
+    # 差的回答
+    user_a_bad = "FastAPI是用来写网页的，没什么特别的。"
+    print(f"\n--- 评估差的回答 ---")
+    print(f"原始问题: {original_q}")
+    print(f"标准答案: {original_a}")
+    print(f"用户回答: {user_a_bad}")
+    try:
+        eval_result_bad = await evaluate_answer(original_q, original_a, user_a_bad)
+        print(f"评估结果 (差): Score={eval_result_bad['score']}, Feedback='{eval_result_bad['feedback']}'")
+    except Exception as e:
+        print(f"Evaluation Test (Bad) Failed: {e}")
+
+    # --- 测试 extract_qa_from_pdf ---
+    # 注意: 要测试此功能，你需要准备一个实际的PDF文件。
+    # 我这里会给出一个提示，并尝试读取一个示例PDF（如果存在）。
+    # 按照您提供的代码，这里期望有一个名为 'file.pdf' 的文件。
+    print("\n>>> 测试 extract_qa_from_pdf (PDF问答提取) <<<")
+    expected_pdf_path = r"E:\PycharmProjects\mcp_nvidia\data\刑法案例分析之模拟题汇总.pdf"  # 按照您提供的代码，需要一个名为 'file.pdf' 的文件
+
+    if os.path.exists(expected_pdf_path):
+        print(f"正在尝试从 '{expected_pdf_path}' 提取问答对...")
+        try:
+            with open(expected_pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+            qa_pairs = await extract_qa_from_pdf(pdf_bytes)
+            print(f"成功提取 {len(qa_pairs)} 个问答对。示例第一个问答对:")
+            if qa_pairs:
+                print(f"Q: {qa_pairs[0]['question']}")
+                print(f"A: {qa_pairs[0]['answer']}")
+            else:
+                print("未提取到任何问答对。")
+        except Exception as e:
+            print(f"PDF Extraction Test Failed: {e}")
+    else:
+        print(f"跳过 PDF 问答提取测试：未找到文件 '{expected_pdf_path}'。")
+        print(f"要测试此功能，请在当前目录下放置一个有效的PDF文件，并将其命名为 '{expected_pdf_path}'。")
+
+    print("\n--- 所有 Gemini 工具函数测试完成 ---")
+    return qa_pairs
+
+if __name__ == "__main__":
+    # 使用 asyncio.run() 来运行顶层的异步函数
+    res = asyncio.run(main())
