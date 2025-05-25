@@ -6,7 +6,9 @@ from typing import List, Optional, Dict
 import uvicorn
 import os
 
-from utils.gemini_utils import extract_qa_from_pdf, evaluate_answer, chat_with_gemini, get_embedding
+# 从 utils.gemini_utils 导入必要的函数，移除 get_embedding
+from utils.gemini_utils import extract_qa_from_pdf, evaluate_answer, chat_with_gemini
+# 从 utils.knowledge_base 导入知识库管理函数
 from utils.knowledge_base import (
     load_qa_from_json, save_qa_to_json, build_and_save_faiss_index,
     search_faiss_index, knowledge_base_exists, ensure_data_dir
@@ -120,28 +122,30 @@ async def chat_with_llm(request: ChatRequest) -> ChatMessage:
                 [f"Q: {qa.get('question')}\nA: {qa.get('answer')}" for qa in retrieved_qa_pairs])
             print(f"Chat with context: {context}")
             # 构建带上下文的对话
-            messages_with_context = [
-                {"role": "system",
-                 "content": "你是一位知识渊博的助手。当用户提问时，如果相关知识点在提供的参考知识中，请优先利用这些知识来回答。如果参考知识点不包含答案，请使用你的通用知识。"},
-                {"role": "user", "content": f"{context}\n\n我的问题是: {user_message}"}
+            # 这里将 system 消息和 user 消息合并为一个用户消息，或者单独处理
+            # 考虑到 chat_with_gemini 现在只接受 List[str]，我们需要将这些字典转换为字符串列表
+            messages_for_gemini = [
+                "你是一位知识渊博的助手。当用户提问时，如果相关知识点在提供的参考知识中，请优先利用这些知识来回答。如果参考知识点不包含答案，请使用你的通用知识。",
+                f"{context}\n\n我的问题是: {user_message}"
             ]
         else:
             print("Chat without specific knowledge base context.")
             # 没有相关知识点，直接通用对话
-            messages_with_context = [
-                {"role": "system", "content": "你是一位友好的通用助手。"},
-                {"role": "user", "content": user_message}
+            messages_for_gemini = [
+                "你是一位友好的通用助手。",
+                user_message
             ]
     else:
         print("Chat without knowledge base.")
         # 知识库不存在，直接通用对话
-        messages_with_context = [
-            {"role": "system", "content": "你是一位友好的通用助手。"},
-            {"role": "user", "content": user_message}
+        messages_for_gemini = [
+            "你是一位友好的通用助手。",
+            user_message
         ]
 
     try:
-        response_text = await chat_with_gemini(messages_with_context)
+        # 传入 List[str] 到 chat_with_gemini
+        response_text = await chat_with_gemini(messages_for_gemini)
         return ChatMessage(role="model", content=response_text)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"与LLM交互失败: {str(e)}")
@@ -205,8 +209,6 @@ async def process_pdf_for_qa(pdf_data: bytes) -> Dict:
     [FastMCP Tool] 处理上传的PDF，提取问答对并构建知识库。
     此工具供FastMCP代理调用，功能与 /upload_pdf 路由类似。
     """
-    # 这是一个简化版本，实际的 /upload_pdf 路由会接收 UploadFile 并处理。
-    # 这里为了 FastMCP 的演示，直接模拟了 pdf_data 传入。
     try:
         qa_pairs = await extract_qa_from_pdf(pdf_data)
         save_qa_to_json(qa_pairs)
