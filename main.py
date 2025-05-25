@@ -250,8 +250,9 @@ async def evaluate_user_response(original_q: str, original_a: str, user_a: str) 
 
 
 # 挂载MCP到FastAPI
-app.mount("/mcp", mcp.http_app())
+# app.mount("/mcp", mcp.http_app())
 
 # 运行服务器
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    mcp.run(transport="stdio")
+    # uvicorn.run(app, host="0.0.0.0", port=8000)

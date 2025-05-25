@@ -1,7 +1,5 @@
 import streamlit as st
 import httpx
-import json
-import os
 import asyncio
 
 from config import FASTAPI_BASE_URL, ASSESSMENT_QUESTION_COUNT
