@@ -25,8 +25,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# 创建FastMCP服务器
-mcp = FastMCP.from_fastapi(app)
+
 
 
 # --- Pydantic 模型 ---
@@ -201,7 +200,9 @@ async def evaluate_user_answer(request: AssessmentEvaluateRequest):
         raise HTTPException(status_code=500, detail=f"评估用户回答失败: {str(e)}")
 
 
-# --- FastMCP 工具 (仅用于展示 FastMCP 规范，实际功能由上面API路由实现) ---
+# --- FastMCP 工具---
+# 创建FastMCP服务器
+mcp = FastMCP.from_fastapi(app)
 
 @mcp.tool()
 async def process_pdf_for_qa(pdf_data: bytes) -> Dict:
