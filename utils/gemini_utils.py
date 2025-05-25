@@ -1,19 +1,15 @@
-import google.generativeai as genai
-from google.generativeai import types
+from google import genai
+from google.genai import types
 import json
 import os
 import httpx
-
-from config import GEMINI_API_KEY, GEMINI_GENERATION_MODEL, GEMINI_EMBEDDING_MODEL
-
-# 配置 Gemini API Key
-genai.configure(api_key=GEMINI_API_KEY)
+import pathlib
+from config import GEMINI_API_KEY, GEMINI_GENERATION_MODEL  # <--- 注意这里不再导入 GEMINI_EMBEDDING_MODEL
 
 
 def get_gemini_client():
     """获取 Gemini 客户端实例"""
-    return genai.GenerativeModel(GEMINI_GENERATION_MODEL)
-
+    return genai.Client(api_key=GEMINI_API_KEY)
 
 async def extract_qa_from_pdf(pdf_bytes: bytes) -> list:
     """
@@ -42,17 +38,17 @@ async def extract_qa_from_pdf(pdf_bytes: bytes) -> list:
     temp_pdf_path = "temp_uploaded_doc.pdf"
     with open(temp_pdf_path, "wb") as f:
         f.write(pdf_bytes)
-
+    filepath = pathlib.Path('file.pdf')
     try:
-        response = await model.generate_content_async(
+        response = model.models.generate_content(
+            model=GEMINI_GENERATION_MODEL,
             contents=[
                 types.Part.from_bytes(
-                    data=open(temp_pdf_path, 'rb').read(),
+                    data=filepath.read_bytes(),
                     mime_type='application/pdf',
                 ),
-                prompt
-            ]
-        )
+        prompt])
+
         # 尝试解析 Gemini 的响应文本为 JSON
         qa_pairs_str = response.text.strip().replace("```json\n", "").replace("\n```", "")
         qa_pairs = json.loads(qa_pairs_str)
@@ -103,7 +99,10 @@ async def evaluate_answer(original_question: str, original_answer: str, user_ans
     """
 
     try:
-        response = await model.generate_content_async(prompt)
+        response = model.models.generate_content(
+            model=GEMINI_GENERATION_MODEL,
+            contents=[prompt]
+        )
         eval_result_str = response.text.strip().replace("```json\n", "").replace("\n```", "")
         eval_result = json.loads(eval_result_str)
 
@@ -116,22 +115,6 @@ async def evaluate_answer(original_question: str, original_answer: str, user_ans
         raise ValueError("Gemini 评估返回的不是有效的 JSON 格式。")
 
 
-async def get_embedding(text: str) -> list:
-    """
-    获取文本的嵌入向量。
-    Args:
-        text: 需要嵌入的文本。
-    Returns:
-        文本的嵌入向量列表。
-    """
-    try:
-        result = await genai.embed_content_async(model=GEMINI_EMBEDDING_MODEL, content=text)
-        return result['embedding']
-    except Exception as e:
-        print(f"获取嵌入向量失败: {e}")
-        raise
-
-
 async def chat_with_gemini(messages: list) -> str:
     """
     与 Gemini 进行通用对话。
@@ -142,7 +125,7 @@ async def chat_with_gemini(messages: list) -> str:
     """
     model = get_gemini_client()
     try:
-        response = await model.generate_content_async(messages)
+        response = await model.models.generate_content(model=GEMINI_GENERATION_MODEL, contents=messages)
         return response.text
     except Exception as e:
         print(f"与 Gemini 对话失败: {e}")
