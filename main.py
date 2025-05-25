@@ -204,19 +204,19 @@ async def evaluate_user_answer(request: AssessmentEvaluateRequest):
 # 创建FastMCP服务器
 mcp = FastMCP.from_fastapi(app)
 
-@mcp.tool()
-async def process_pdf_for_qa(pdf_data: bytes) -> Dict:
-    """
-    [FastMCP Tool] 处理上传的PDF，提取问答对并构建知识库。
-    此工具供FastMCP代理调用，功能与 /upload_pdf 路由类似。
-    """
-    try:
-        qa_pairs = await extract_qa_from_pdf(pdf_data)
-        save_qa_to_json(qa_pairs)
-        await build_and_save_faiss_index(qa_pairs)
-        return {"status": "success", "message": f"成功提取 {len(qa_pairs)} 个问答对并构建知识库。"}
-    except Exception as e:
-        return {"status": "error", "message": f"处理PDF失败: {str(e)}"}
+# @mcp.tool()
+# async def process_pdf_for_qa(query, pdf_data: bytes) -> Dict:
+#     """
+#     [FastMCP Tool] 处理上传的PDF，提取问答对并构建知识库。
+#     此工具供FastMCP代理调用，功能与 /upload_pdf 路由类似。
+#     """
+#     try:
+#         qa_pairs = await extract_qa_from_pdf(pdf_data)
+#         save_qa_to_json(qa_pairs)
+#         await build_and_save_faiss_index(qa_pairs)
+#         return {"status": "success", "message": f"成功提取 {len(qa_pairs)} 个问答对并构建知识库。"}
+#     except Exception as e:
+#         return {"status": "error", "message": f"处理PDF失败: {str(e)}"}
 
 
 @mcp.tool()
@@ -250,9 +250,9 @@ async def evaluate_user_response(original_q: str, original_a: str, user_a: str) 
 
 
 # 挂载MCP到FastAPI
-# app.mount("/mcp", mcp.http_app())
+app.mount("/mcp", mcp.http_app())
 
 # 运行服务器
 if __name__ == "__main__":
     mcp.run(transport="stdio")
-    # uvicorn.run(app, host="0.0.0.0", port=8000)
+    # uvicorn.run(app, host="0.0.0.0", port=8005)
